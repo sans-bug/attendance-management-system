@@ -10,7 +10,7 @@ const SideNav = () => {
 
   const allItems = [
     { to: "/admin", icon: <LayoutDashboard size={20} />, label: "Dashboard", roles: ['admin'] },
-    { to: "/cloud", icon: <Cloud size={20} />, label: "Cloud Core", roles: ['admin'] },
+    { to: "/cloud", icon: <Cloud size={20} />, label: "Cloud Core", roles: ['student', 'teacher', 'admin'] },
     { to: "/teacher", icon: <Fingerprint size={20} />, label: "Attendance Roster", roles: ['teacher', 'admin'] },
     { to: "/student", icon: <LayoutDashboard size={20} />, label: "Academic Portfolio", roles: ['student'] },
     { to: "/schedule", icon: <CalendarDays size={20} />, label: "Schedule", roles: ['student', 'teacher', 'admin'] },

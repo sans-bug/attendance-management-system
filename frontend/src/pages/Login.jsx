@@ -9,8 +9,12 @@ const Login = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setIsSubmitting(true);
+    setError(null);
     try {
       const role = await login(email, password);
       // Route based on role
@@ -18,40 +22,64 @@ const Login = () => {
       else if (role === 'teacher') navigate('/teacher');
       else navigate('/student');
     } catch (err) {
-      setError('Invalid email or password');
+      console.error(err);
+      const detail = err.response?.data?.detail;
+      setError(detail || "Authorization Failed: Please verify your credentials or network connectivity.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-background">
-      <div className="card w-full max-w-md">
-        <h2 className="text-3xl font-bold text-center mb-6 text-white">Welcome Back</h2>
-        {error && <div className="bg-red-500 text-white p-3 rounded mb-4">{error}</div>}
-        <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="card w-full max-w-md animate-fade-in">
+        <div className="text-center mb-10">
+           <h2 className="text-4xl font-bold text-white mb-2 tracking-tighter">Welcome Back</h2>
+           <p className="text-[10px] uppercase tracking-[0.3em] text-textMuted font-bold">Authorized Personnel Only</p>
+        </div>
+
+        {error && (
+          <div className="bg-danger/10 border border-danger/30 text-danger p-4 rounded-xl text-[10px] font-bold uppercase tracking-widest leading-relaxed mb-6 animate-shake">
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-6">
           <div>
-            <label className="block text-sm font-medium text-textMuted mb-1">Email</label>
+            <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-textMuted mb-2 ml-1">Identity Uplink (Email)</label>
             <input 
               type="email" 
-              className="input-field"
+              className="input-field py-4"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              placeholder="e.g. director@system.com"
               required 
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-textMuted mb-1">Password</label>
+            <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-textMuted mb-2 ml-1">Secure Passkey</label>
             <input 
               type="password" 
-              className="input-field"
+              className="input-field py-4"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
               required 
             />
           </div>
-          <button type="submit" className="btn-primary w-full mt-6">Login</button>
+          
+          <button 
+            type="submit" 
+            className={`btn-primary w-full py-5 text-xs tracking-[0.3em] font-bold uppercase transition-all
+              ${isSubmitting ? 'opacity-70 cursor-wait' : ''}`}
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? 'Authenticating...' : 'Establish Link'}
+          </button>
         </form>
-        <p className="mt-4 text-center text-sm text-textMuted">
-          Don't have an account? <Link to="/register" className="text-primary hover:text-primaryHover">Register</Link>
+        
+        <p className="mt-10 text-center text-[10px] uppercase tracking-widest text-textMuted font-medium">
+          New Node? <Link to="/register" className="text-primary font-bold hover:underline">Register Identity</Link>
         </p>
       </div>
     </div>

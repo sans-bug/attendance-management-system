@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List
 from datetime import date
 
+from sqlalchemy import func, Integer
 from .. import models, schemas, auth, database
 
 router = APIRouter(tags=["Attendance"])
@@ -100,24 +101,70 @@ def get_students(
 
 @router.get("/stats")
 def get_stats(
+    subject: str = None,
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(auth.require_role(["admin", "teacher"]))
 ):
+    # Total Students for the header
     total_students = db.query(models.Student).count()
     
-    # Simple daily stats for today
+    # 1. Historical Flux (Attendance over time)
+    # We look for the last 7 unique dates in the Attendance table
+    query = db.query(
+        models.Attendance.date,
+        func.count(models.Attendance.id).label('total'),
+        func.sum(func.cast(models.Attendance.status == 'Present', Integer)).label('present')
+    ).group_by(models.Attendance.date).order_by(models.Attendance.date.desc())
+
+    if subject:
+        query = query.filter(models.Attendance.subject == subject)
+    
+    trend_data = query.limit(7).all()
+    
+    # Format for Recharts
+    days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+    historical_trend = []
+    for d in reversed(trend_data):
+        historical_trend.append({
+            "name": days[d[0].weekday()],
+            "date": d[0].strftime("%d %b"),
+            "rate": round((d[2]/d[1]*100) if d[1] > 0 else 0)
+        })
+
+    # Aesthetic baseline filler (simulated flux for empty states)
+    if not historical_trend:
+        historical_trend = [
+            {"name": "Mon", "rate": 0},
+            {"name": "Tue", "rate": 0},
+            {"name": "Wed", "rate": 0}
+        ]
+
+    # 2. Daily Snapshot (Present/Absent/Excused percentages)
     today = date.today()
-    total_attendance = db.query(models.Attendance).filter(models.Attendance.date == today).count()
-    present_count = db.query(models.Attendance).filter(
-        models.Attendance.date == today, 
-        models.Attendance.status == "Present"
-    ).count()
+    snap_query = db.query(models.Attendance).filter(models.Attendance.date == today)
+    if subject:
+        snap_query = snap_query.filter(models.Attendance.subject == subject)
     
-    present_pct = (present_count / total_attendance * 100) if total_attendance > 0 else 0
-    
+    total_snapshot = snap_query.count()
+    if total_snapshot > 0:
+        present = snap_query.filter(models.Attendance.status == "Present").count()
+        absent = snap_query.filter(models.Attendance.status == "Absent").count()
+        excused = snap_query.filter(models.Attendance.status == "Excused").count()
+        
+        distribution = [
+            {"name": "Present", "value": present, "color": "#e2c4a9"},
+            {"name": "Absent", "value": absent, "color": "#ff4444"},
+            {"name": "Excused", "value": excused, "color": "#444444"}
+        ]
+        present_pct = (present / total_snapshot * 100)
+    else:
+        distribution = []
+        present_pct = 0
+
     return {
         "total_students": total_students,
+        "historical_trend": historical_trend,
+        "distribution": distribution,
         "present_pct": round(present_pct, 1),
-        "absent_pct": round(100 - present_pct, 1) if total_attendance > 0 else 0,
         "status": "OPTIMAL" if present_pct > 75 else "ATTENTION REQUIRED"
     }

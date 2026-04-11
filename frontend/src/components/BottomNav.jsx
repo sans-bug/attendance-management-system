@@ -10,7 +10,7 @@ const BottomNav = () => {
 
   const allItems = [
     { to: "/admin", icon: <LayoutDashboard size={24} />, label: "DASHBOARD", roles: ['admin'] },
-    { to: "/cloud", icon: <Cloud size={24} />, label: "CLOUD", roles: ['admin'] },
+    { to: "/cloud", icon: <Cloud size={24} />, label: "CLOUD", roles: ['student', 'teacher', 'admin'] },
     { to: "/teacher", icon: <Fingerprint size={24} />, label: "MARK", roles: ['teacher', 'admin'] },
     { to: "/student", icon: <LayoutDashboard size={24} />, label: "DASHBOARD", roles: ['student'] },
     { to: "/schedule", icon: <CalendarDays size={24} />, label: "SCHEDULE", roles: ['student', 'teacher', 'admin'] },

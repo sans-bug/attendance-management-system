@@ -9,21 +9,26 @@ router = APIRouter(tags=["Authentication"])
 
 @router.post("/register", response_model=schemas.UserOut)
 def register(user: schemas.UserCreate, db: Session = Depends(database.get_db)):
+    print(f">>> REGISTER START: Email={user.email}, Role={user.role}")
     db_user = db.query(models.User).filter(models.User.email == user.email).first()
     if db_user:
+        print(">>> REGISTER ERROR: User already exists")
         raise HTTPException(status_code=400, detail="Email already registered")
     
+    print(">>> Hashing password...")
     hashed_password = auth.get_password_hash(user.password)
     
-    # Create the base user
+    # Create the base user with normalized role
+    role_norm = user.role.lower()
     new_user = models.User(
         name=user.name,
         email=user.email,
         password_hash=hashed_password,
-        role=user.role
+        role=role_norm
     )
     db.add(new_user)
     db.commit()
+    print(">>> Base user committed to DB")
     db.refresh(new_user)
     
     # Depending on role string, create associated profile
@@ -45,10 +50,12 @@ def register(user: schemas.UserCreate, db: Session = Depends(database.get_db)):
         db.add(teacher)
         
     db.commit()
+    print(f">>> REGISTER COMPLETE: User ID={new_user.id}")
     return new_user
 
 @router.post("/login", response_model=schemas.Token)
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(database.get_db)):
+    print(f">>> LOGIN START: Email={form_data.username}")
     user = db.query(models.User).filter(models.User.email == form_data.username).first()
     if not user or not auth.verify_password(form_data.password, user.password_hash):
         raise HTTPException(

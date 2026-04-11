@@ -11,7 +11,7 @@ router = APIRouter(tags=["System Diagnostics"])
 @router.get("/system/status")
 def get_system_status(
     db: Session = Depends(database.get_db),
-    current_user: models.User = Depends(auth.require_role(["admin"]))
+    current_user: models.User = Depends(auth.require_role(["admin", "teacher", "student"]))
 ):
     # Calculate Database Size
     db_path = Path("attendance.db").absolute()

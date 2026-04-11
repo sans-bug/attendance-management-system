@@ -20,10 +20,11 @@ const StudentDashboard = () => {
     setError(null);
     try {
       const res = await api.get('/get-attendance');
-      setAttendance(res.data);
+      const attendanceData = Array.isArray(res.data) ? res.data : [];
+      setAttendance(attendanceData);
       
       const subjMap = {};
-      res.data.forEach(r => {
+      attendanceData.forEach(r => {
         if (!subjMap[r.subject]) {
           subjMap[r.subject] = { present: 0, total: 0 };
         }
