@@ -1,0 +1,45 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+@import "tailwindcss";
+
+@theme {
+  --color-background: #141312;
+  --color-surface: #201f1e;
+  --color-border: #333230;
+  --color-primary: #e2c4a9;
+  --color-primaryHover: #d0b398;
+  --color-textMain: #f7f6f2;
+  --color-textMuted: #9b9a98;
+  --color-accentAbsent: #e59696;
+  --color-accentPresent: #e2c4a9;
+  --color-accentExcused: #8892b0;
+  --color-danger: #d15b5b;
+  --font-sans: "Inter", sans-serif;
+}
+
+@layer base {
+  body {
+    @apply bg-background text-textMain font-sans antialiased;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-primary hover:bg-primaryHover text-[#141312] font-semibold py-3 px-6 rounded-lg transition-colors duration-200 outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background;
+  }
+  .input-field {
+    @apply w-full bg-surface border border-border rounded-lg px-4 py-3 text-textMain placeholder-textMuted focus:outline-none focus:ring-1 focus:ring-primary focus:border-transparent transition-all;
+  }
+  .card {
+    @apply bg-surface border border-border rounded-xl p-5 shadow-sm;
+  }
+  /* Hide scrollbar for Chrome, Safari and Opera */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  /* Hide scrollbar for IE, Edge and Firefox */
+  .no-scrollbar {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+  }
+}
