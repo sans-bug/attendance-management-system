@@ -1,7 +1,7 @@
 import os
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, Integer
 from .. import models, database, auth
 from pathlib import Path
 import datetime
@@ -98,6 +98,79 @@ def get_system_status(
         models.Attendance.date == datetime.date.today()
     ).count()
 
+    # Detail lists for each KPI section
+    student_rows = db.query(models.Student, models.User).join(models.User, models.Student.user_id == models.User.id).limit(12).all()
+    total_students_list = [
+        {"name": user.name, "department": student.department, "year": student.year}
+        for student, user in student_rows
+    ]
+
+    attendance_rows = (
+        db.query(
+            models.Student.id.label('student_id'),
+            models.User.name.label('student_name'),
+            func.count(models.Attendance.id).label('total_classes'),
+            func.sum(func.cast(models.Attendance.status == 'Present', Integer)).label('attended_classes')
+        )
+        .join(models.User, models.Student.user_id == models.User.id)
+        .join(models.Attendance, models.Student.id == models.Attendance.student_id)
+        .group_by(models.Student.id, models.User.name)
+        .order_by(func.sum(func.cast(models.Attendance.status == 'Present', Integer)).desc())
+        .limit(12)
+        .all()
+    )
+
+    attendance_list = [
+        {
+            "student_name": row.student_name,
+            "attended": int(row.attended_classes or 0),
+            "total": int(row.total_classes or 0),
+            "percentage": round((row.attended_classes / row.total_classes * 100) if row.total_classes > 0 else 0, 1)
+        }
+        for row in attendance_rows
+    ]
+
+    class_rows = (
+        db.query(
+            models.Class.id.label('class_id'),
+            models.Class.subject,
+            models.User.name.label('teacher_name'),
+            func.count(models.Enrollment.id).label('enrolled')
+        )
+        .join(models.Teacher, models.Class.teacher_id == models.Teacher.id)
+        .join(models.User, models.Teacher.user_id == models.User.id)
+        .outerjoin(models.Enrollment, models.Class.id == models.Enrollment.class_id)
+        .group_by(models.Class.id, models.Class.subject, models.User.name)
+        .order_by(func.count(models.Enrollment.id).desc())
+        .limit(12)
+        .all()
+    )
+
+    class_list = [
+        {"subject": row.subject, "teacher": row.teacher_name, "enrolled": int(row.enrolled or 0)}
+        for row in class_rows
+    ]
+
+    checkin_rows = (
+        db.query(models.Attendance, models.Student, models.User)
+        .join(models.Student, models.Attendance.student_id == models.Student.id)
+        .join(models.User, models.Student.user_id == models.User.id)
+        .filter(models.Attendance.date == datetime.date.today())
+        .order_by(models.Attendance.timestamp.desc())
+        .limit(12)
+        .all()
+    )
+
+    checkins_list = [
+        {
+            "student_name": user.name,
+            "subject": attendance.subject,
+            "status": attendance.status,
+            "time": attendance.timestamp.strftime('%H:%M')
+        }
+        for attendance, student, user in checkin_rows
+    ]
+
     avg_attendance = 0
     if attendance_count > 0:
         presents = db.query(models.Attendance).filter(models.Attendance.status == 'Present').count()
@@ -128,6 +201,28 @@ def get_system_status(
                     "attendance": "+2.1%",
                     "classes": "+3",
                     "checkins": "Live"
+                },
+                "details": {
+                    "total_students": {
+                        "title": "Student Roster",
+                        "description": "First students in the roster with department and year.",
+                        "items": total_students_list
+                    },
+                    "avg_attendance": {
+                        "title": "Recent Student Attendance",
+                        "description": "Top students by attendance percentage across recorded sessions.",
+                        "items": attendance_list
+                    },
+                    "active_classes": {
+                        "title": "Active Class Rooms",
+                        "description": "Active classes with current teacher assignment and enrollment counts.",
+                        "items": class_list
+                    },
+                    "checkins_today": {
+                        "title": "Check-ins Today",
+                        "description": "Latest student check-ins recorded for today, sorted by time.",
+                        "items": checkins_list
+                    }
                 }
             }
         },

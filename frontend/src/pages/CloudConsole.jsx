@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Cloud, Server, Database, ShieldCheck, Activity, Cpu, HardDrive, Network, Globe, AlertCircle, 
-  Box, Archive, ShieldAlert, BarChart3, Lock, Zap, MessageSquare, Eye, GitBranch, Search, Shield, Zap as StreamIcon
+  Box, Archive, ShieldAlert, BarChart as BarChartIcon, Lock, Zap, MessageSquare, Eye, GitBranch, Search, Shield, Zap as StreamIcon
 } from 'lucide-react';
 import { 
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, 
@@ -26,6 +26,7 @@ const CloudConsole = () => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [selectedKpi, setSelectedKpi] = useState('Total Students');
 
   useEffect(() => {
     fetchSystemStatus();
@@ -69,6 +70,59 @@ const CloudConsole = () => {
   };
 
   const summary = data.metrics.summary;
+  const details = summary.details || {};
+  const kpiKeyMap = {
+    'Total Students': 'total_students',
+    'Avg Attendance': 'avg_attendance',
+    'Active Classes': 'active_classes',
+    'Check-ins Today': 'checkins_today'
+  };
+
+  const selectedDetail = {
+    label: selectedKpi,
+    ...(details[kpiKeyMap[selectedKpi]] || {}),
+    count: summary[kpiKeyMap[selectedKpi]]
+  };
+
+  const renderDetailItem = (item, key) => {
+    if (key === 'total_students') {
+      return (
+        <div key={`${item.name}-${item.year}`} className="border-b border-border/20 py-3 last:border-b-0">
+          <p className="text-sm text-white font-bold">{item.name}</p>
+          <p className="text-[10px] text-textMuted uppercase tracking-[0.2em]">{item.department} • Year {item.year}</p>
+        </div>
+      );
+    }
+
+    if (key === 'avg_attendance') {
+      return (
+        <div key={item.student_name} className="border-b border-border/20 py-3 last:border-b-0">
+          <p className="text-sm text-white font-bold">{item.student_name}</p>
+          <p className="text-[10px] text-textMuted uppercase tracking-[0.2em]">{item.attended}/{item.total} sessions • {item.percentage}%</p>
+        </div>
+      );
+    }
+
+    if (key === 'active_classes') {
+      return (
+        <div key={item.subject} className="border-b border-border/20 py-3 last:border-b-0">
+          <p className="text-sm text-white font-bold">{item.subject}</p>
+          <p className="text-[10px] text-textMuted uppercase tracking-[0.2em]">{item.teacher} • {item.enrolled} enrolled</p>
+        </div>
+      );
+    }
+
+    if (key === 'checkins_today') {
+      return (
+        <div key={`${item.student_name}-${item.time}`} className="border-b border-border/20 py-3 last:border-b-0">
+          <p className="text-sm text-white font-bold">{item.student_name}</p>
+          <p className="text-[10px] text-textMuted uppercase tracking-[0.2em]">{item.subject} • {item.status} • {item.time}</p>
+        </div>
+      );
+    }
+
+    return null;
+  };
 
   return (
     <div className="py-6 space-y-20 pb-20 animate-fade-in lg:px-6">
@@ -99,12 +153,38 @@ const CloudConsole = () => {
                { label: 'Active Classes', value: summary.active_classes, trend: summary.trends.classes },
                { label: 'Check-ins Today', value: summary.checkins_today, trend: summary.trends.checkins },
             ].map((kpi, i) => (
-               <div key={i} className="card bg-[#141312] border-border/20 p-8 text-center space-y-4 group hover:border-primary/40 transition-all hover:scale-105 active:scale-95 cursor-default">
+               <button
+                 key={i}
+                 type="button"
+                 onClick={() => setSelectedKpi(kpi.label)}
+                 className={`card bg-[#141312] border-border/20 p-8 text-center space-y-4 group transition-all hover:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/40 ${selectedKpi === kpi.label ? 'border-primary/60 shadow-[0_0_30px_rgba(226,196,169,0.12)]' : 'hover:scale-105 active:scale-95'}`}
+               >
                   <p className="text-[10px] uppercase tracking-widest text-textMuted font-bold">{kpi.label}</p>
                   <p className="text-5xl font-bold text-white tracking-tighter">{kpi.value}</p>
                   <p className={`text-[10px] font-black uppercase tracking-widest ${kpi.trend === 'Live' ? 'text-primary' : 'text-primary/60'}`}>{kpi.trend}</p>
-               </div>
+               </button>
             ))}
+         </div>
+
+         {/* KPI Detail Panel */}
+         <div className="card bg-surface/50 border-border/20 p-8">
+            <div className="flex items-center justify-between gap-4 mb-4 flex-col sm:flex-row">
+               <div>
+                 <p className="text-[10px] uppercase tracking-widest text-textMuted font-bold mb-2">Selected Insight</p>
+                 <h3 className="text-2xl font-bold text-white">{selectedDetail.title}</h3>
+               </div>
+               <span className="text-xs uppercase tracking-[0.3em] text-primary font-bold">{selectedKpi}</span>
+            </div>
+            <p className="text-sm text-textMuted leading-relaxed mb-4">{selectedDetail.description}</p>
+            <div className="rounded-3xl bg-[#141312] border border-border/30 p-6 mb-6">
+               <p className="text-sm uppercase tracking-[0.2em] text-textMuted font-bold mb-2">Quick summary</p>
+               <p className="text-lg font-bold text-white">{selectedDetail.detail}</p>
+            </div>
+            {selectedDetail.items?.length > 0 && (
+              <div className="grid gap-4">
+                {selectedDetail.items.map((item, idx) => renderDetailItem(item, kpiKeyMap[selectedKpi]))}
+              </div>
+            )}
          </div>
 
          {/* 2X2 ANALYTICS GRID: RESTORED */}

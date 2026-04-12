@@ -11,6 +11,7 @@ SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DB_PATH}")
 
 # In production (PostgreSQL), we don't need check_same_thread=False
 # SQLite requires it since FastAPI creates workers
+#aws rds
 if SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
     engine = create_engine(
         SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}

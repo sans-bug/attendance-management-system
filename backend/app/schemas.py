@@ -34,6 +34,10 @@ class StudentOut(BaseModel):
     department: str
     year: int
     user: UserOut
+    attendance_status: Optional[str] = None
+    present_count: int = 0
+    absent_count: int = 0
+    excused_count: int = 0
 
     class Config:
         orm_mode = True
@@ -90,6 +94,21 @@ class ClassCreate(ClassBase):
 class ClassOut(ClassBase):
     id: int
     teacher_id: int
+
+    class Config:
+        orm_mode = True
+
+# Enrollment Schemas
+class EnrollmentBase(BaseModel):
+    student_id: int
+    class_id: int
+
+class EnrollmentCreate(EnrollmentBase):
+    pass
+
+class EnrollmentOut(EnrollmentBase):
+    id: int
+    enrollment_date: datetime
 
     class Config:
         orm_mode = True

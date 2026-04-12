@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, CheckCircle2, XCircle, Clock, Save, AlertTriangle, TrendingUp, BarChart as BarChartIcon, PieChart as PieChartIcon, Activity } from 'lucide-react';
+import { Search, CheckCircle2, XCircle, Clock, Save, AlertTriangle, TrendingUp, BarChart as BarChartIcon, Activity } from 'lucide-react';
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell
@@ -8,7 +8,10 @@ import api from '../services/api';
 
 const TeacherDashboard = () => {
   const [students, setStudents] = useState([]);
+  const [classes, setClasses] = useState([]);
+  const [selectedClassId, setSelectedClassId] = useState(null);
   const [subject, setSubject] = useState('');
+  const [subjectInput, setSubjectInput] = useState('');
   const [statuses, setStatuses] = useState({});
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
@@ -18,25 +21,51 @@ const TeacherDashboard = () => {
   const [filters, setFilters] = useState({ department: '', year: '' });
 
   useEffect(() => {
+    fetchClasses();
+  }, []);
+
+  useEffect(() => {
     fetchStudents();
     fetchStats();
-  }, [filters]); // Remove subject from here
+  }, [filters, subject, selectedClassId]);
+
+  const fetchClasses = async () => {
+    try {
+      const res = await api.get('/classes/my');
+      const classData = Array.isArray(res.data) ? res.data : [];
+      setClasses(classData);
+      if (classData.length > 0 && !selectedClassId) {
+        setSelectedClassId(classData[0].id);
+      }
+    } catch (err) {
+      console.error('Failed to load teacher classes:', err);
+    }
+  };
 
   const fetchStudents = async () => {
     setLoading(true);
     setError(null);
     try {
       const params = {};
-      if (filters.department) params.department = filters.department;
-      if (filters.year) params.year = parseInt(filters.year);
-
-      const res = await api.get('/students', { params });
-      const studentData = Array.isArray(res.data) ? res.data : [];
-      setStudents(studentData);
-      // Initialize statuses
-      const initial = {};
-      studentData.forEach(s => initial[s.id] = 'Present');
-      setStatuses(initial);
+      if (selectedClassId) {
+        if (subject) params.subject = subject;
+        const res = await api.get(`/classes/${selectedClassId}/students`, { params });
+        const studentData = Array.isArray(res.data) ? res.data : [];
+        setStudents(studentData);
+        const initial = {};
+        studentData.forEach(s => initial[s.id] = s.attendance_status || 'Present');
+        setStatuses(initial);
+      } else {
+        if (filters.department) params.department = filters.department;
+        if (filters.year) params.year = parseInt(filters.year);
+        if (subject) params.subject = subject;
+        const res = await api.get('/students', { params });
+        const studentData = Array.isArray(res.data) ? res.data : [];
+        setStudents(studentData);
+        const initial = {};
+        studentData.forEach(s => initial[s.id] = s.attendance_status || 'Present');
+        setStatuses(initial);
+      }
     } catch (err) {
       console.error(err);
       setError(err.response?.data?.detail || "System Error: Unable to sync student ledger.");
@@ -59,18 +88,20 @@ const TeacherDashboard = () => {
   };
 
   const handleSubmit = async () => {
-    if (!subject) {
+    if (!subject && !subjectInput) {
       setMessage({ type: 'error', text: 'Please enter a subject name' });
       return;
     }
+    const effectiveSubject = subject || subjectInput;
     try {
       const payload = Object.entries(statuses).map(([studentId, status]) => ({
         student_id: parseInt(studentId),
-        subject,
+        subject: effectiveSubject,
         status: status
       }));
       await api.post('/mark-attendance', payload);
       setMessage({ type: 'success', text: 'Attendance submitted successfully!' });
+      await fetchStudents();
       fetchStats(); // Refresh stats after submission
     } catch (err) {
       setMessage({ type: 'error', text: 'Failed to submit attendance' });
@@ -88,7 +119,7 @@ const TeacherDashboard = () => {
     total: students.length
   };
 
-  if (loading) return <div className="text-center py-20 text-textMuted font-mono animate-pulse uppercase tracking-widest leading-loose">authorizing <br/>biometric roster...</div>;
+  if (loading && students.length === 0) return <div className="text-center py-20 text-textMuted font-mono animate-pulse uppercase tracking-widest leading-loose">authorizing <br/>biometric roster...</div>;
 
   return (
     <div className="py-6 space-y-8 pb-14 animate-fade-in">
@@ -181,14 +212,34 @@ const TeacherDashboard = () => {
         <div className="lg:col-span-1 space-y-6 sticky top-24">
           <div className="card bg-surface/80 border-none space-y-6">
             <div>
+              <label className="block text-[10px] uppercase tracking-widest text-textMuted font-bold mb-3 ml-1">Class Roster</label>
+              <select
+                value={selectedClassId || ''}
+                onChange={(e) => setSelectedClassId(e.target.value ? parseInt(e.target.value) : null)}
+                className="input-field"
+              >
+                <option value="">All Students</option>
+                {classes.map(cls => (
+                  <option key={cls.id} value={cls.id}>{cls.subject}</option>
+                ))}
+              </select>
+            </div>
+            <div>
               <label className="block text-[10px] uppercase tracking-widest text-textMuted font-bold mb-3 ml-1">Current Subject</label>
               <input 
                 type="text" 
-                value={subject} 
-                onChange={(e) => setSubject(e.target.value)}
+                value={subjectInput} 
+                onChange={(e) => setSubjectInput(e.target.value)}
                 placeholder="e.g. Design Studio IV" 
                 className="input-field"
               />
+              <button
+                type="button"
+                onClick={() => setSubject(subjectInput.trim())}
+                className="btn-secondary w-full py-3 mt-3 text-[10px] tracking-[0.2em]"
+              >
+                APPLY SUBJECT
+              </button>
             </div>
             
             <div className="space-y-4 pt-2">
@@ -240,6 +291,11 @@ const TeacherDashboard = () => {
                 <div className="h-1 w-full bg-[#141312] rounded-full overflow-hidden">
                    <div className="h-full bg-primary" style={{ width: `${( (currentSessionStats.present + currentSessionStats.absent + currentSessionStats.excused) / (students.length || 1) ) * 100}%` }}></div>
                 </div>
+                <div className="grid grid-cols-3 gap-2 text-[10px] uppercase tracking-[0.2em] font-bold">
+                  <div className="rounded-xl bg-[#0b2f16] text-success p-2 text-center">Present {currentSessionStats.present}</div>
+                  <div className="rounded-xl bg-[#2f0b0b] text-danger p-2 text-center">Absent {currentSessionStats.absent}</div>
+                  <div className="rounded-xl bg-[#1f1f1f] text-textMuted p-2 text-center">Excused {currentSessionStats.excused}</div>
+                </div>
              </div>
           </div>
         </div>
@@ -274,9 +330,14 @@ const TeacherDashboard = () => {
                   ></div>
                 </div>
                 
-                <div className="text-center mb-6">
+                <div className="text-center mb-3 space-y-2">
                   <h3 className="font-bold text-white text-lg leading-tight group-hover:text-primary transition-colors">{student.user.name}</h3>
-                  <p className="text-[10px] uppercase text-textMuted tracking-wider mt-1 font-bold">{student.department} • YEAR {student.year}</p>
+                  <p className="text-[10px] uppercase text-textMuted tracking-wider font-bold">{student.department} • YEAR {student.year}</p>
+                  <div className="text-[10px] text-textMuted uppercase tracking-[0.14em] font-bold flex items-center justify-center gap-2">
+                    <span className="text-success">P {student.present_count}</span>
+                    <span className="text-danger">A {student.absent_count}</span>
+                    <span className="text-textMuted">E {student.excused_count}</span>
+                  </div>
                 </div>
                 
                 <div className="flex gap-2 w-full">

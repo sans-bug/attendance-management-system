@@ -27,6 +27,7 @@ class Student(Base):
 
     user = relationship("User", back_populates="student_profile")
     attendance_records = relationship("Attendance", back_populates="student")
+    enrollments = relationship("Enrollment", back_populates="student")
 
 class Teacher(Base):
     __tablename__ = "teachers"
@@ -44,6 +45,17 @@ class Class(Base):
     teacher_id = Column(Integer, ForeignKey("teachers.id", ondelete="CASCADE"))
 
     teacher = relationship("Teacher", back_populates="classes")
+    enrollments = relationship("Enrollment", back_populates="class_obj")
+
+class Enrollment(Base):
+    __tablename__ = "enrollments"
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("students.id", ondelete="CASCADE"))
+    class_id = Column(Integer, ForeignKey("classes.id", ondelete="CASCADE"))
+    enrollment_date = Column(DateTime, default=datetime.datetime.utcnow)
+
+    student = relationship("Student", back_populates="enrollments")
+    class_obj = relationship("Class", back_populates="enrollments")
 
 class Attendance(Base):
     __tablename__ = "attendance"

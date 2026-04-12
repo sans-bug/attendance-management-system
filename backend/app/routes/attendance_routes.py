@@ -89,6 +89,7 @@ def get_attendance(
 def get_students(
     department: str = None,
     year: int = None,
+    subject: str = None,
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(auth.require_role(["teacher", "admin"]))
 ):
@@ -97,11 +98,31 @@ def get_students(
         query = query.filter(models.Student.department == department)
     if year:
         query = query.filter(models.Student.year == year)
-    return query.all()
+
+    students = query.all()
+    today = date.today()
+
+    for student in students:
+        attendance_query = db.query(models.Attendance).filter(
+            models.Attendance.student_id == student.id,
+            models.Attendance.date == today
+        )
+        if subject:
+            attendance_query = attendance_query.filter(models.Attendance.subject == subject)
+
+        student.present_count = attendance_query.filter(models.Attendance.status == "Present").count()
+        student.absent_count = attendance_query.filter(models.Attendance.status == "Absent").count()
+        student.excused_count = attendance_query.filter(models.Attendance.status == "Excused").count()
+
+        latest_record = attendance_query.order_by(models.Attendance.timestamp.desc()).first()
+        student.attendance_status = latest_record.status if latest_record else None
+
+    return students
 
 @router.get("/stats")
 def get_stats(
     subject: str = None,
+    class_id: int = None,
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(auth.require_role(["admin", "teacher"]))
 ):
@@ -168,3 +189,176 @@ def get_stats(
         "present_pct": round(present_pct, 1),
         "status": "OPTIMAL" if present_pct > 75 else "ATTENTION REQUIRED"
     }
+
+@router.get("/stats/me")
+def get_student_stats(
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth.require_role(["student"]))
+):
+    student = db.query(models.Student).filter(models.Student.user_id == current_user.id).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student profile not found")
+
+    # 1. Personal Flux (Last 7 days of attendance activity)
+    trend_query = db.query(
+        models.Attendance.date,
+        func.count(models.Attendance.id).label('total'),
+        func.sum(func.cast(models.Attendance.status == 'Present', Integer)).label('present')
+    ).filter(models.Attendance.student_id == student.id)\
+     .group_by(models.Attendance.date).order_by(models.Attendance.date.desc())
+
+    trend_data = trend_query.limit(10).all()
+    
+    historical_trend = []
+    days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+    for d in reversed(trend_data):
+        historical_trend.append({
+            "name": days[d[0].weekday()],
+            "date": d[0].strftime("%d %b"),
+            "rate": round((d[2]/d[1]*100) if d[1] > 0 else 0)
+        })
+
+    # 2. Subject Breakdown
+    subj_query = db.query(
+        models.Attendance.subject,
+        func.count(models.Attendance.id).label('total'),
+        func.sum(func.cast(models.Attendance.status == 'Present', Integer)).label('present')
+    ).filter(models.Attendance.student_id == student.id)\
+     .group_by(models.Attendance.subject).all()
+
+    distribution = []
+    for s in subj_query:
+        perc = round((s.present/s.total*100) if s.total > 0 else 0)
+        distribution.append({
+            "subject": s.subject,
+            "present": s.present,
+            "total": s.total,
+            "percentage": perc
+        })
+
+    return {
+        "historical_trend": historical_trend,
+        "distribution": distribution,
+        "summary": {
+            "total_sessions": sum(s.total for s in subj_query),
+            "present_sessions": sum(s.present for s in subj_query),
+            "overall_pct": round(sum(s.present for s in subj_query) / sum(s.total for s in subj_query) * 100 if sum(s.total for s in subj_query) > 0 else 0)
+        }
+    }
+
+@router.post("/classes", response_model=schemas.ClassOut)
+def create_class(
+    class_data: schemas.ClassCreate,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth.require_role(["teacher", "admin"]))
+):
+    teacher = db.query(models.Teacher).filter(models.Teacher.user_id == current_user.id).first()
+    if not teacher:
+        raise HTTPException(status_code=404, detail="Teacher profile not found")
+        
+    new_class = models.Class(subject=class_data.subject, teacher_id=teacher.id)
+    db.add(new_class)
+    db.commit()
+    db.refresh(new_class)
+    return new_class
+
+@router.post("/enroll", response_model=schemas.EnrollmentOut)
+def enroll_student(
+    enroll_data: schemas.EnrollmentCreate,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth.require_role(["teacher", "admin"]))
+):
+    # Check if student exists
+    student = db.query(models.Student).filter(models.Student.id == enroll_data.student_id).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student record not found")
+        
+    # Check if class exists and belongs to teacher
+    class_obj = db.query(models.Class).filter(models.Class.id == enroll_data.class_id).first()
+    if not class_obj:
+        raise HTTPException(status_code=404, detail="Class not found")
+        
+    if current_user.role != "admin":
+        teacher = db.query(models.Teacher).filter(models.Teacher.user_id == current_user.id).first()
+        if not teacher or class_obj.teacher_id != teacher.id:
+            raise HTTPException(status_code=403, detail="Not authorized to manage this class roster")
+
+    # Check for existing enrollment
+    existing = db.query(models.Enrollment).filter(
+        models.Enrollment.student_id == enroll_data.student_id,
+        models.Enrollment.class_id == enroll_data.class_id
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Student is already enrolled in this class")
+
+    new_enrollment = models.Enrollment(student_id=enroll_data.student_id, class_id=enroll_data.class_id)
+    db.add(new_enrollment)
+    db.commit()
+    db.refresh(new_enrollment)
+    return new_enrollment
+
+@router.get("/classes/my", response_model=List[schemas.ClassOut])
+def get_my_classes(
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth.require_role(["teacher"]))
+):
+    teacher = db.query(models.Teacher).filter(models.Teacher.user_id == current_user.id).first()
+    if not teacher:
+        raise HTTPException(status_code=404, detail="Teacher profile not found")
+    return db.query(models.Class).filter(models.Class.teacher_id == teacher.id).all()
+
+@router.get("/classes/{class_id}/students", response_model=List[schemas.StudentOut])
+def get_class_students(
+    class_id: int,
+    subject: str = None,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth.require_role(["teacher", "admin"]))
+):
+    class_obj = db.query(models.Class).filter(models.Class.id == class_id).first()
+    if not class_obj:
+        raise HTTPException(status_code=404, detail="Class not found")
+
+    if current_user.role != "admin":
+        teacher = db.query(models.Teacher).filter(models.Teacher.user_id == current_user.id).first()
+        if not teacher or class_obj.teacher_id != teacher.id:
+            raise HTTPException(status_code=403, detail="Not authorized to view this class roster")
+
+    enrollments = db.query(models.Enrollment).filter(models.Enrollment.class_id == class_id).all()
+    student_ids = [e.student_id for e in enrollments]
+    students = db.query(models.Student).filter(models.Student.id.in_(student_ids)).all()
+    today = date.today()
+
+    for student in students:
+        attendance_query = db.query(models.Attendance).filter(
+            models.Attendance.student_id == student.id,
+            models.Attendance.date == today
+        )
+        if subject:
+            attendance_query = attendance_query.filter(models.Attendance.subject == subject)
+
+        student.present_count = attendance_query.filter(models.Attendance.status == "Present").count()
+        student.absent_count = attendance_query.filter(models.Attendance.status == "Absent").count()
+        student.excused_count = attendance_query.filter(models.Attendance.status == "Excused").count()
+        latest_record = attendance_query.order_by(models.Attendance.timestamp.desc()).first()
+        student.attendance_status = latest_record.status if latest_record else None
+
+    return students
+
+@router.delete("/unenroll/{student_id}/{class_id}")
+def unenroll_student(
+    student_id: int,
+    class_id: int,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth.require_role(["teacher", "admin"]))
+):
+    query = db.query(models.Enrollment).filter(
+        models.Enrollment.student_id == student_id,
+        models.Enrollment.class_id == class_id
+    )
+    enrollment = query.first()
+    if not enrollment:
+        raise HTTPException(status_code=404, detail="Enrollment record not found")
+        
+    db.delete(enrollment)
+    db.commit()
+    return {"message": "Student unenrolled successfully"}
