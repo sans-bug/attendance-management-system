@@ -46,9 +46,13 @@ const Register = () => {
       
     } catch (err) {
       console.error(err);
-      const detail = err.response?.data?.detail;
-      const message = Array.isArray(detail) ? detail[0]?.msg : detail;
-      setError(message || err.message || 'Registration failed. Check if email exists.');
+      if (!err.response) {
+        setError('Network issue: unable to reach the backend. Start the backend server or set VITE_API_URL correctly.');
+      } else {
+        const detail = err.response?.data?.detail;
+        const message = Array.isArray(detail) ? detail[0]?.msg : detail;
+        setError(message || err.message || 'Registration failed. Check if email exists.');
+      }
     } finally {
       setIsSubmitting(false);
     }

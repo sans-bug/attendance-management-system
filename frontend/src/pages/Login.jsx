@@ -23,8 +23,12 @@ const Login = () => {
       else navigate('/student');
     } catch (err) {
       console.error(err);
-      const detail = err.response?.data?.detail;
-      setError(detail || "Authorization Failed: Please verify your credentials or network connectivity.");
+      if (!err.response) {
+        setError('Network issue: unable to reach the backend. Start the backend server or set VITE_API_URL correctly.');
+      } else {
+        const detail = err.response?.data?.detail;
+        setError(detail || 'Authorization Failed: Please verify your credentials.');
+      }
     } finally {
       setIsSubmitting(false);
     }
